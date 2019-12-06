@@ -2,112 +2,71 @@
     <section>
         <!-- <el-button class="add" @click="addUsers">添加用户</el-button> -->
         <div class="menu">
-            <span>项目名称</span> 
-            <el-select v-model="menuValue" placeholder="请选择" @change="changeMenu">
-                <el-option
-                v-for="item in menus"
-                :key="item.id"
-                :label="item.name"
-                :value="item.id">
-                </el-option>
-            </el-select>
-            <span>工程名称</span> 
-            <el-select v-model="twoLevelValue" placeholder="请选择">
-                <el-option
-                v-for="item in twoLevelMenus"
-                :key="item.id"
-                :label="item.name"
-                :value="item.id">
-                </el-option>
-            </el-select>
             <span>设备名称</span>
-            <el-select v-model="equipmentVale" placeholder="请选择">
+            <el-select v-model="equipmentVale" placeholder="请选择" class="equipment" @change="changeEquipment">
                 <el-option
                 v-for="item in equipments"
-                :key="item.value"
-                :label="item.label"
-                :value="item.value">
+                :key="item.name"
+                :label="item.name"
+                :value="item.name">
                 </el-option>
             </el-select>
+            <el-button type="primary" class="excelBtn" @click="downToExcel">下载成excel</el-button>
+            <el-button type="primary" class="excelBtn" @click="downToFile">下载数据文件</el-button>
+            <el-button type="primary" class="excelBtn" @click="deleteFile">删除数据文件</el-button>
         </div>
-        <el-table
-            :data="tableData"
-            border
-            style="width: 100%">
-            <el-table-column
-                prop="id"
-                label="id"
-                width="180">
-            </el-table-column>
-            <el-table-column
-                prop="name"
-                label="设备名"
-               >
-            </el-table-column>
-            <el-table-column
-                prop="infomation"
-                label="数据信息名"
-               >
-            </el-table-column>
-            <el-table-column
-                fixed="right"
-                label="操作"
-                width="100">
-                <template slot-scope="scope">
-                    <el-button type="text" size="small" @click="medify(scope.row)">修改</el-button>
-                    <el-button type="text" size="small" @click="deleteUser(scope.row)">删除</el-button>
-                </template>
-            </el-table-column>
-        </el-table>
-        <div class="page">
-            <el-pagination
-            background
-            layout="prev, pager, next"
-            @current-change="pageChange"
-            :page-size="10"
-            :total="total">
-        </el-pagination> 
+        <div class="table" v-show="isShow">
+           <div class="tableHead">
+                <div class="date">
+                    <span>{{year}}年</span><span>{{month}}月</span><span>{{date}}日</span><span>{{time.slice(0,2)+':'+time.slice(2)}}测</span>
+                </div>
+                <div class="num">
+                    <span>工程号：{{engineerNum}}</span><span>区号:{{areaNum}}</span>
+                </div>
+                <div class="num">
+                    <span>D={{diameter}}</span><span>{{passivation===1?'活化':'钝化'}}</span>
+                </div>
+                <div class="num">
+                    <span>x={{row}}</span><span>y={{column}}</span>
+                </div>
+                <div class="num">
+                    <span>使用天数{{howmanydays}}</span>
+                </div>
+           </div>
+           <div class="tableBody">
+                <div v-for="(item,index) in tableData" v-bind:key="index" :style="'width:'+column*80+'px'">
+                   <span v-for="(it,idx) in item" v-bind:key="idx" :style="'background-color:'+it.color">{{it.value===65535?'':it.value}}</span>
+                </div>
+           </div>
         </div>
-        <el-dialog
-            title="添加用户"
-            :visible.sync="dialogVisible"
-            width="60%"
-            :before-close="handleClose">
-            <div class="news">
-              <h1>用户名</h1> 
-              <el-input v-model="user" placeholder="请输入内容"></el-input>
-            </div>
-            <div class="news">
-              <h3>密码</h3> 
-              <el-input v-model="password"  type="password" placeholder="请输入内容"></el-input>
-            </div>
-            <span slot="footer" class="dialog-footer">
-                <el-button @click="dialogVisible = false">取 消</el-button>
-                <el-button type="primary" @click="save">保存</el-button>
-            </span>
-        </el-dialog>    
+        <div id="main" style="width: 98%;height: 400px;" v-show="isShow"></div>
     </section>    
 </template>
 <script>
-import { VueEditor } from 'vue2-editor'
-import md5 from 'js-md5';
-import { saveEquipment,getAllEquipment,getEquipment,updateEquipment,deleteEquipment,getAllMenu,getAllTwoLevelMenuByMenuId} from '../../api/api';
+import echarts from 'echarts';
+import {getAllEquipment,getEquipmentData,downToExcel,deleteFile} from '../../api/api';
 export default {
     data() {
         return {
-            tableData: [],
-            dialogVisible: false,
-            user:"",
-            password:"",
-            id:0,
-            nowPage:1,
-            total:0,
-            menus: [],
-            menuValue: '',
-            twoLevelMenus:[],
-            twoLevelValue:'',
             equipments:[],
-            equipmentVale:''
+            equipmentVale:'',
+            mergeData:[],
+            json_data: [],
+            base64:'',
+            arrVal:[],
+            year:"",
+            month:"",
+            date:"",
+            time:"",
+            engineerNum:"",
+            areaNum:"",
+            diameter:"",
+            passivation:"",
+            row:"",
+            column:'',
+            tableData:[],
+            isShow:false,
+            howmanydays:0
         }
     },
     mounted(){
@@ -115,37 +74,10 @@ export default {
     },
     methods:{
         init(nowPage){
-            // getAllEquipment().then((result)=>{
-            //     if(result.code){
-            //     this.tableData=result.result.result;
-            //     this.total=result.result.count
-            //     }else{
-            //     this.$message({
-            //         message: result.result.msg,
-            //         type: 'warning'
-            //     });
-            //     }
-            // })
-            getAllMenu().then((result)=>{
+            this.dataInit();
+            getAllEquipment().then((result)=>{
                 if(result.code){
-                  this.menus=result.result.result;
-                }else{
-                this.$message({
-                    message: result.result.msg,
-                    type: 'warning'
-                });
-                }
-            })
-        },
-        changeMenu(){
-            this.twoLevelMenus=[];
-            this.twoLevelValue='';
-            this.equipments=[];
-            this.equipmentVale='';
-            getAllTwoLevelMenuByMenuId({menuId:this.menuValue}).then((result)=>{
-                console.log(result)
-                if(result.code){
-                    this.twoLevelMenus=result.result;
+                    this.equipments=result.result;
                 }else{
                     this.$message({
                         message: result.result.msg,
@@ -154,48 +86,241 @@ export default {
                 }
             })
         },
-        addUsers(){
-            this.id=0;
-            this.user="";
-            this.password="";
-            this.dialogVisible=true;
+        dataInit(){
+            this.equipments=[];
+            this.equipmentVale='';
+            this.mergeData=[];
+            this.json_data=[];
+            this.base64='';
+            this.arrVal=[];
+            this.year="";
+            this.month="";
+            this.date="";
+            this.time="";
+            this.engineerNum="";
+            this.areaNum="";
+            this.diameter="";
+            this.passivation="";
+            this.row="";
+            this.column='';
+            this.tableData=[];
+            this.isShow=false;
+            this.howmanydays=0;
         },
-        handleClose(){
-          this.dialogVisible=false;
+        draw(id){
+            let xData=[];
+            let yData=[];
+            let yData1=[];
+            let yData2=[];
+            this.tableData=[];
+            let length=this.mergeData[6]*this.mergeData[7];
+            let x=this.mergeData[8]&0x7f;
+            let p=this.mergeData[9]*256+this.mergeData[10]*1;
+            this.howmanydays=this.mergeData[9]*256+this.mergeData[10]*1;
+            let csfinish=this.mergeData[12]&0xff;
+            for(let i=0;i<length;i++){
+                xData.push(i+1)
+                let yValue=(this.mergeData[i*2+16]+this.mergeData[i*2+17]*256)/100;
+                if(yValue*100==65535){
+                  yData.push(0);
+                  yData2.push(0)
+                  yData1.push(yValue);
+                }else{
+                  yData.push(yValue);
+                  yData1.push(this.getRou(yValue*100,p,csfinish,x));
+                  yData2.push(this.getRou(yValue*100,p,csfinish,x));
+                }
+            }
+            for(let j=0; j<this.mergeData[6];j++){
+                let row=[];
+                for(let k=0; k<this.mergeData[7];k++){
+                    let color= "green";
+                    let value=yData1[j*this.mergeData[7]+k]*100;
+                    if(value==65535){
+                      color= "#A9A9A9";
+                      value=65535   
+                    }else if(value>=1000){
+                      color="red";
+                      value=5;
+                    }else if(value>=500){
+                      color="orange";
+                      value=4;
+                    }else if(value>=300){
+                      color="yellow";
+                      value=3
+                    }else if(value>=200){
+                      color="blue";
+                      value=2
+                    }else{
+                      value=1;  
+                    }
+                    row.push({value:value,color});
+                }
+                this.tableData.push(row);
+            }
+            this.arrVal=yData;
+            this.charts = echarts.init(document.getElementById(id))
+            this.charts.setOption({
+                 dataZoom: [
+                    {
+                        show: true,
+                        realtime: true,
+                        start: 0,
+                        end: 100,
+                        // xAxisIndex: [0, 1]
+                    },
+                    {
+                        type: 'inside',
+                        realtime: true,
+                        start: 30,
+                        end: 70,
+                        // xAxisIndex: [0, 1]
+                    }
+                ],
+                tooltip: {
+                    trigger: 'axis'
+                },
+                xAxis: {
+                    type: 'category',
+                    data: xData
+                },
+                yAxis: [
+                    {
+                        type: 'value',
+                        name: '电流密度',
+                        axisLabel: {
+                            formatter: '{value}'
+                        }
+                    },
+                    {
+                        type: 'value',
+                        name: '截面损失率',
+                        axisLabel: {
+                            formatter: '{value}'
+                        }
+                    },
+                ],
+                series: [{
+                    data: yData,
+                    type: 'line',
+                    smooth: true
+                },
+                {
+                    data: yData2,
+                    yAxisIndex:1,
+                    type: 'line',
+                    smooth: true
+                }
+                ]
+               })
         },
-        medify(obj){
-            this.dialogVisible=true;
-            getEquipment({
-                id:obj.id
-            }).then((res)=>{
-                    if(res.code){
-                        let data=res.result
-                        this.id=  data.id
-                        this.user=data.user
-                        this.password=data.password;
+         getRou(r,p,csfinish,x)
+            {
+            let lt;
+            lt=p;   //dates
+            lt=parseInt(lt*r);    //电流密度i带100倍来计算,dates按365倍计算
+            lt=parseInt(lt*csfinish); //alpha按100000倍
+            lt=lt+150;
+            lt=parseInt(lt/365);   //dates 365倍还原
+            lt+=40;
+            lt=parseInt(lt/100);   //alpha 还原1000倍,由于直径按mm除，此处要加10倍，所以用/=100
+            lt=parseInt(lt/x);   //diameter
+            lt=10000-lt;
+            lt=parseInt(lt*lt);
+            lt+=4000;
+            lt=parseInt(lt/10000);
+            lt=10000-lt;  //结果为 X%%
+            return lt/100;
+        } ,
+        changeEquipment(){
+            this.isShow=false;
+            getEquipmentData({equipmentName:this.equipmentVale}).then((result)=>{
+                if(result.code){
+                    this.isShow=true;
+                    let data=JSON.parse(result.result.data)
+                    data=data.map((item)=>{
+                    item=JSON.parse(item)
+                    return item;
+                    })
+                    let mergeData=[]
+                    for(let item of data){
+                        mergeData.push(...item);
+                    }
+                    for(let i=0;i<mergeData.length;i++){
+                        mergeData[i]=parseInt(mergeData[i],16)
+                    }
+                    this.mergeData=mergeData
+                    this.year=this.equipmentVale.slice(0,4)
+                    this.month=this.equipmentVale.slice(4,6)
+                    this.date=this.equipmentVale.slice(6,8)
+                    this.time=this.equipmentVale.slice(8,12)
+                    this.engineerNum=this.equipmentVale.slice(13,17)
+                    this.areaNum=this.equipmentVale.slice(18,20)
+                    this.row= this.mergeData[6];
+                    this.column= this.mergeData[7];
+                    this.diameter= this.mergeData[8];
+                    this.passivation= this.mergeData[9];
+                    setTimeout(()=>{
+                        this.draw("main")
+                    }) 
+                }else{
+                    this.$message({
+                        message: result.result.msg,
+                        type: 'warning'
+                    });
+                }
+                
+            })
+        },
+        downToExcel(){
+            if(!this.equipmentVale){
+                this.$message({
+                    message: "请选择设备",
+                    type: 'warning'
+                });
+            }
+            downToExcel({base64:this.charts.getConnectedDataURL({
+                pixelRatio: 5,　　//导出的图片分辨率比率,默认是1
+                backgroundColor: '#fff',　　//图表背景色
+                excludeComponents:[　　//保存图表时忽略的工具组件,默认忽略工具栏
+                'toolbox'
+                ],
+                type:'png'　　//图片类型支持png和jpeg
+                }),equipmentName:this.equipmentVale}).then((result)=>{
+                    if(result.code){
+                        window.location.href=result.result.http
                     }
             })
         },
-        pageChange(page){
-            this.init(page);
-            this.nowPage=page;
+        downToFile(){
+            if(!this.equipmentVale){
+                this.$message({
+                    message: "请选择设备",
+                    type: 'warning'
+                });
+                return
+            }
+            window.open("http://47.111.115.157/data/"+this.equipmentVale);
         },
-        deleteUser(obj){
-            this.$confirm('此操作将永久删除该文件, 是否继续?', '提示', {
+        deleteFile(){
+            if(!this.equipmentVale){
+                this.$message({
+                    message: "请选择设备",
+                    type: 'warning'
+                });
+            }
+             this.$confirm('此操作将永久删除该文件, 是否继续?', '提示', {
                 confirmButtonText: '确定',
                 cancelButtonText: '取消',
                 type: 'warning'
                 }).then(() => {
-                    deleteEquipment({
-                      id:obj.id
+                    deleteFile({
+                      equipmentName:this.equipmentVale
                     }).then((res)=>{
                         this.$message({
                             type: 'success',
                             message: '删除成功!'
                         });
-                        if(this.tableData.length===1&&this.nowPage>1){
-                          this.nowPage--;
-                        }
                         this.init(this.nowPage);
                     }).catch(()=>{
                         this.$message({
@@ -204,78 +329,20 @@ export default {
                         });
                     })
                 }).catch(() => {
-                this.$message({
-                    type: 'info',
-                    message: '已取消删除'
-                });          
+                    this.$message({
+                        type: 'info',
+                        message: '已取消删除'
+                    });          
                 });
-        },
-        save(){
-            if(this.user===""||this.user===null){
-               return this.$message({
-                        message: '用户名不能为空',
-                        type: 'warning'
-                    });
-            }
-            if(this.password===""||this.password===null){
-                return this.$message({
-                        message: '密码不能为空',
-                        type: 'warning'
-                    });
-            }
-            if(this.password.length<8){
-                return this.$message({
-                        message: '密码长度不能低于8位',
-                        type: 'warning'
-                    });
-            } 
-            if(this.id>0){
-                updateEquipment({
-                    id:this.id,
-                    user:this.user,
-                    password:md5(this.password),
-                }).then((result)=>{
-                    if(result.code){
-                        this.$message({
-                            message: '更新成功',
-                            type: 'success'
-                        });
-                        this.init(this.nowPage);
-                        this.dialogVisible=false;
-                    }else{
-                        this.$message({
-                            message: '更新失败',
-                            type: 'warning'
-                        });
-                    }
-                })
-            }else{
-                saveEquipment({
-                    user:this.user,
-                    password:md5(this.password),
-                }).then((result)=>{
-                    if(result.code){
-                            this.$message({
-                                message: '添加成功',
-                                type: 'success'
-                            });
-                            this.init(this.nowPage);
-                            this.dialogVisible=false;
-                    }else{
-                            this.$message({
-                                message: result.result.msg,
-                                type: 'warning'
-                            });
-                    }
-                })
-            }
         }
-    },
-    components: {
-      VueEditor
     },
 }
 </script>
+<style lang="less">
+   .equipment.el-select{
+       width: 300px;
+   }
+</style>
 <style lang="less" scoped>
   section{
       .menu{
@@ -290,6 +357,33 @@ export default {
      .page{
           text-align: center;
           margin: 30px auto;
+      }
+      .excelBtn{
+          margin-left: 10px;
+      }
+      .table{
+          .tableHead{
+            display: flex;
+            justify-content:space-between;
+          }
+          .tableBody{
+            margin-top: 10px;
+            width: 1000px;
+            height: 600px;
+            overflow-x:scroll;
+            overflow-y:scroll;
+            span{
+               margin: 4px; 
+               vertical-align: middle;
+               display: inline-block;
+               border:1px solid black;
+               text-align: center;
+               line-height: 20px;
+               width: 20px;
+               height: 20px; 
+               padding: 4px;
+            }
+          }
       }
   }
 </style>
